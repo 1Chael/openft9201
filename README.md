@@ -1,82 +1,88 @@
-# Focal-systems.Corp FT9201Fingerprint.̚ linux driver
+# FT9201 fingerprint reader Linux driver
 
-Device id `2808:93a9`.
+Linux char-device driver for the FocalTech (Focal-systems.Corp) FT9201
+fingerprint sensor, **USB ID `2808:9338`**.
 
-Based on [libfprint wiki post](https://gitlab.freedesktop.org/libfprint/wiki/-/wikis/Devices/2808:93a9)
+The USB protocol was reverse-engineered from the official Windows driver
+(v2.0.3.83) using USBPcap captures and verified against a live sensor through
+this driver. See the protocol notes in `ft9201.c`.
 
-Not yet production ready but it's good enough for trying out. You might encounter occasional kernel oops or panic.
+## Status
 
-**Note:** It won't work with User login settings as libfprint integration is not done yet. However, it enables utilization of the fingerprint reader in custom programs.
+- Captures raw 64x80 grayscale fingerprint images at `/dev/fpreader*`.
+- Exposes init/status/power ioctls consumed by the companion `ft9201_util`
+  utility.
+- Not yet integrated with libfprint; it will not work with desktop login
+  settings. It is intended for custom programs.
 
-## Pre-Req
-Run following and verify that you have **2808:93a9 Focal-systems.Corp FT9201Fingerprint.̚**
+## Prerequisites
+
+Verify your device is present:
+
 ```shell
 lsusb
 ```
 
+You should see `2808:9338 Focal-systems.Corp FT9201Fingerprint`.
 
-# Installation
+## Build
 
-1. Clone the repo.
-2. Get into the project directory: `cd ft9201-fingerprint-driver/`
-3. Compile the driver: `make`
-4. Either disable **Secure Boot** or follow below steps to sign and enroll MOK key:
-    - Generate Private key and Certificate:
-      ```shell
-      openssl req -new -x509 -newkey rsa:2048 -keyout MOK.priv -outform DER -out MOK.der -nodes -days 36500 -subj "/CN=Custom Kernel Module Signing/"
-      ```
-    - Sign the compiled driver (kernel module):
-      ```shell
-      sudo /usr/src/linux-headers-$(uname -r)/scripts/sign-file sha256 ./MOK.priv MOK.der ft9201.ko
-      ```
-    - Enroll MOK key: `sudo mokutil --import MOK.der`
-    - Reboot and verify MOK key at boot.
-5. Install the module in System: `sudo make install`
-6. Update module dependencies: `sudo depmod -a`
-7. Load the kernel module (driver): `sudo modprobe ft9201`
-
-If you don't want to install the driver, you can load it manually with
 ```shell
-insmod ./ft9201.ko
+make
 ```
 
-# Usage
+This builds the kernel module (`ft9201.ko`) and the userspace utility
+(`ft9201_util`).
 
-If driver is installed, it will autoload when appropriate device is connected.
+## Install (with Secure Boot)
 
-Once the driver is loaded, and a device is present, it will be available at `/dev/fpreader0`.
-  
-1. Get into the project directory: `cd ft9201-fingerprint-driver/`
-2. Check and verify module name: `sudo ls -lah /dev/fpreader*`
-3. Let's say if module name is **fpreader4**, initialize the driver with: `sudo ./ft9201_util /dev/fpreader4`
-   
-   **Sample output:**
+1. Generate a key pair:
    ```shell
-    FT9201 utility program
-    Action: 0
-    Device: /dev/fpreader4
-    status struct: 0x7ffcc1ff7360
-    Initializing device
-    Setting auto power
+   openssl req -new -x509 -newkey rsa:2048 -keyout MOK.priv -outform DER -out MOK.der -nodes -days 36500 -subj "/CN=Custom Kernel Module Signing/"
    ```
-  
- 5. Run `sudo cat /dev/fpreader4 > fingerprint.rawimg` and swipe your finger on the scanner so that utility can save image of your fingerprint.
- 6. Import raw image in GIMP as RGB,64x80 or convert using imagemagick:
-    ```shell
-    convert -size 64x80 -depth 8 gray:./fingerprint.rawimg fingerprint.png
-    ```
+2. Sign the module:
+   ```shell
+   sudo /usr/src/linux-headers-$(uname -r)/scripts/sign-file sha256 ./MOK.priv MOK.der ft9201.ko
+   ```
+3. Enroll the key:
+   ```shell
+   sudo mokutil --import MOK.der
+   ```
+4. Reboot and approve the key in the MOK manager.
 
+Alternatively, disable Secure Boot.
 
+## Load
 
-
-## Utility
+Install and load the module:
 
 ```shell
-make ft9201_util
+sudo make install
+sudo depmod -a
+sudo modprobe ft9201
 ```
 
-# Notes
+Or load it manually without installing:
 
-* If something happens during initialization and driver stops sending images, you need to plug it into a windows machine
-which will reset it into a stable state. This is being worked on.
-* libfprint integration is planned
+```shell
+sudo insmod ./ft9201.ko
+```
+
+When the sensor is present, the driver creates `/dev/fpreader0`.
+
+## Usage
+
+```shell
+sudo ./ft9201_util /dev/fpreader0
+```
+
+Capture a raw image and convert it to PNG:
+
+```shell
+sudo cat /dev/fpreader0 > fingerprint.rawimg
+convert -size 64x80 -depth 8 gray:./fingerprint.rawimg fingerprint.png
+```
+
+## License
+
+GPL v2. See `LICENSE`.
